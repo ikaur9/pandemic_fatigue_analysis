@@ -1,5 +1,11 @@
 # Regression Analysis of Pandemic Fatigue
 
+*Report by Charis Chan, Joyce Ching, & Inderpal Kaur*
+
+*5th Year MIDS, w203 Fall 2020 Final Project*
+
+## About
+
 A study on the relationship between the duration of stay-at-home orders and order compliance using data from Google’s COVID-19 Mobility Report. See our [final report](./reports/final_report.pdf) for a complete account of our methods and results.
 
 Project Organization
@@ -11,13 +17,7 @@ Project Organization
     │   ├── interim        <- Intermediate data that has been transformed.
     │   ├── processed      <- The final, canonical data sets for modeling.
     │   └── raw            <- The original, immutable data dump.
-    |
     ├── notebooks          <- .Rmd notebooks. 
-    │
     ├── reports            <- Generated analysis as HTML, PDF, LaTeX, etc.
-    │
     └── src                <- Source code for use in this project.
-        │
         └── data           <- Scripts to download or generate data
-
---------
