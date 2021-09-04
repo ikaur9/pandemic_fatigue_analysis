@@ -1,0 +1,180 @@
+---
+title: "CLM Assumptions"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(ggplot2)
+library(sandwich)
+library(readr)
+library(gridExtra)
+library(patchwork)
+library(car)
+```
+
+##  5 CLM Assumptions
+
+Below we list the 5 CLM assumptions and the corresponding information/tests that we use to check these assumptions:
+
+**1. IID Sampling**
+
+Reference population: US states that implemented stay at home orders.
+
+Limitations:
+
+a) The mobility data doesnât include the entire state population (nonrandom sample of users).
+- Proximity in terms of social distance: Only users who have a mobile device and a Google Account are represented. Users also need to have opted-in to Location History for their Google Account.
+- Proximity in terms of physical distance: People may not have data or live in places with connectivity issues. Privacy thresholds also may not be met if somewhere isnât busy enough to ensure anonymity.
+
+b) States might be systematically different from one another in various ways. For example, states that are closer together geographically may be influenced by similar weather patterns or economic conditions, while states that are farther away geographically may not be as similar. 
+
+These limitations mean that our data is not guaranteed to be IID for the entire population. Given the granularity of the data we had available to us, we attempted to incorporate covariates in our models that might account some of the differences between states, but we acknowledge that this approach may not be sufficient. 
+
+Statistical consequences: Having non-independent samples prevents us from being able to provide guarantees about the entirety of our reference population.   
+
+Mitigating the consequences: We need to narrow down our research question to only include individuals who fit the population of those who are sampled and to adjust our measures of uncertainty to reflect the clustered nature of the data generating process.
+
+**2. Linear Conditional Expectation:** The data fits a linear conditional expectation. The plots of the fitted values vs. the residuals below do not show strong evidence of a pattern in the residuals (the residuals are roughly evenly distributed around the horizontal line at 0).
+
+
+```{r, echo = FALSE}
+d_linear_base <- data %>%  filter(!is.na(residential_diff)) %>% filter(!is.na(order_length)) %>%
+  mutate(baseline_residuals = resid(baseline), baseline_predictions = predict(baseline))
+
+plot_baseline <- d_linear_base %>%  
+  ggplot(aes(x = log(order_length), y = baseline_residuals)) + 
+  geom_point() + stat_smooth(se = TRUE) + labs(
+    title = 'Order Length vs. Residuals: Baseline', 
+    x = 'Order Length (days)', 
+    y = 'Baseline Residuals'
+  )
+
+```
+
+```{r, echo = FALSE, message=FALSE}
+plot_baseline <- data %>% ggplot(aes(x = predict(baseline), y = resid(baseline))) + 
+  geom_point() + stat_smooth(se = TRUE) +
+  labs(title='Baseline: Fitted Values vs. Residuals', 
+       x="Fitted Values", y="Residuals") +
+  theme(plot.title = element_text(size = 10))
+
+plot_v1 <- data %>% ggplot(aes(x = predict(version_1), y = resid(version_1))) + 
+  geom_point() + stat_smooth(se = TRUE) + 
+  labs(title='Model 1: Fitted Values vs. Residuals', 
+       x="Fitted Values", y="Residuals") + 
+  theme(plot.title = element_text(size = 10))
+
+plot_v2 <- data %>% ggplot(aes(x = predict(version_2), y = resid(version_2))) + 
+  geom_point() + stat_smooth(se = TRUE) + 
+  labs(title='Model 2: Fitted Values vs. Residuals', 
+       x="Fitted Values", y="Residuals") + 
+  theme(plot.title = element_text(size = 10))
+```
+
+```{r, echo=FALSE, message=FALSE}
+
+plot_baseline
+```
+
+```{r, echo=FALSE, message=FALSE}
+plot_v1
+```
+
+```{r, echo=FALSE, message=FALSE}
+plot_v2
+```
+
+
+**3. No Perfect Collinearity:** 
+
+Our models do not drop any variables, which shows that there is no perfect collinearity between our features. 
+
+Additionally, no near-perfect collinearity is indicated by looking at a correlation plot and variance inflation factor (VIF) of each coefficient. The correlation plot for these features shows us that none of the pairs of variables have a correlation magnitude greater than 0.7. 
+
+```{r, echo=FALSE}
+model_subset <- data %>% 
+  mutate(governor_political_party_R = case_when(governor_political_party == 'D' ~ 0,
+                                                governor_political_party == 'R' ~ 1)) %>%
+  select('order_length', 'residential_diff', 'order_start_rank', 'Population density per square miles', 'avg_new_cases_per_100K', 'governor_political_party_R')
+
+corrplot::corrplot(cor(model_subset), method = "number", order="AOE", diag=FALSE, addCoef.col = "white", addCoefasPercent = TRUE)
+```
+
+The variance inflation factors tell us that the standard error for each feature is approximately two times higher than it would be without the other variables. This is small enough to not cause any problems and still allows us to obtain precise measurements of mobility difference.  
+
+```{r, echo=FALSE, message=FALSE}
+car::vif(version_2)
+```
+
+**4. Homoskedastic Conditional Variance**
+
+Ocular test: A visual inspection of our graphs of the fitted values vs. the residuals shows that there is relatively little âfanning outâ effect. The residuals are roughly arranged in a flat line at 0, which means that the ocular test does not show strong evidence of heteroskedasticity.
+
+```{r, echo = FALSE, message=FALSE}
+(plot_baseline | plot_v1) / plot_v2
+```
+
+Breusch-Pagan test: Although the test says that we should not reject the null hypothesis that there is homoskedastic conditional variance at the 95% confidence level, the p-values are small enough that we decided to use robust standard errors in our final model to account for the observed variation.
+
+```{r, echo = FALSE}
+lmtest::bptest(baseline)
+lmtest::bptest(version_1)
+lmtest::bptest(version_2)
+```
+
+As we see in our regression table (below), the larger robust standard errors do not affect the statistical significance of our findings. That is, the relationship where a 1 day increase in order length is correlated with a 2.59% increase in mobility difference remains significant at the 99.99% confidence level.
+
+```{r, echo=FALSE, message=FALSE}
+lmtest::coeftest(version_2, vcov = vcovHC(version_2, type = "HC0"))
+```
+
+**5. Normally Distributed Errors:** 
+
+The histograms of the residuals and the qqplots show the errors to have some deviations from normality. This problem threatens the validity of our significance tests and confidence intervals. We tried to fix this problem with various logarithmic and polynomial variable transformations such as but were unsuccessful in finding a transformation that would give us approximately normally distributed errors.
+
+```{r, echo=FALSE, message=FALSE}
+plot_baseline_hist <- data %>%
+  ggplot(aes(x = resid(baseline))) + 
+  geom_histogram(binwidth = 0.1) + ggtitle('Baseline: Histogram of Residuals') +
+  theme(plot.title = element_text(size = 12))
+
+
+plot_baseline_qq <- data %>%  
+  ggplot(aes(sample = resid(baseline))) + 
+  stat_qq() + stat_qq_line() + ggtitle('Baseline: qqPlot of Residuals') +
+  theme(plot.title = element_text(size = 12))
+
+plot_baseline_hist | plot_baseline_qq
+```
+
+```{r, echo=FALSE, message=FALSE}
+plot_v1_hist <- data %>%
+  ggplot(aes(x = resid(version_1))) + 
+  geom_histogram(binwidth = 0.1) + ggtitle('Model 1: Histogram of Residuals') + 
+  theme(plot.title = element_text(size = 12))
+
+
+plot_v1_qq <- data %>%  
+  ggplot(aes(sample = resid(version_1))) + 
+  stat_qq() + stat_qq_line() + ggtitle('Model 1: qqPlot of Residuals') +
+  theme(plot.title = element_text(size = 12))
+
+plot_v1_hist | plot_v1_qq
+```
+
+```{r, echo=FALSE, message=FALSE}
+plot_v2_hist <- data %>%
+  ggplot(aes(x = resid(version_2))) + 
+  geom_histogram(binwidth = 0.1) + ggtitle('Model 2: Histogram of Residuals') +
+  theme(plot.title = element_text(size = 12))
+
+
+plot_v2_qq <- data %>%  
+  ggplot(aes(sample = resid(version_2))) + 
+  stat_qq() + stat_qq_line() + ggtitle('Model 2: qqPlot of Residuals') +
+  theme(plot.title = element_text(size = 12))
+
+plot_v2_hist | plot_v2_qq
+```

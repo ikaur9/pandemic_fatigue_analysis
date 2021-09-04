@@ -1,0 +1,334 @@
+---
+title: "EDA"
+output: pdf_document
+---
+
+```{r}
+library(usmap)
+library(ggplot2)
+library(gridExtra)
+library(readr)
+library(dplyr)
+library(corrplot)
+```
+
+```{r}
+data <- read_csv("../data/processed/covid_states.csv")
+head(data)
+```
+
+## State-Based EDA
+Using the plot_usmap function, we plotted variables of interest gain a better understanding of our data and to identify any notable patterns or outliers found across states.
+
+```{r}
+#convert stateName to state
+colnames(data)[2] <- "state"
+```
+
+```{r}
+# governor political party
+plot_usmap(data = data, values = "governor_political_party") + 
+  scale_fill_manual(name = "Governor Political Party", values = c("D" = "blue", "R" = "red")) + 
+  theme(legend.position = "right")
+```
+
+```{r}
+# population density per square mile (excluding District of Columbia because it's an outlier)
+plot_usmap(data = data[-c(6),], values = "Population density per square miles") + 
+  scale_fill_continuous(name = "Population Density per square mile", label = scales::comma) +
+  theme(legend.position = "right")
+```
+
+We chose to omit the District of Columbia due to it's population density per square mile being over 10x greater than the second most densely populated state. Even so, we are able to observe significant differences in population across states.
+
+```{r}
+# percent at risk for serious illness due to COVID
+plot_usmap(data = data, values = "Percent at risk for serious illness due to COVID") + 
+  scale_fill_continuous(name = "Percent at Risk for Serious Illness Due to COVID", label = scales::comma) + 
+  theme(legend.position = "right")
+```
+
+West Virginia has an exceptionally high percentage of its population at risk for serious illness due to COVID. This is interesting because we see in the following graph that there are other states with similar population distributions as West Virginia that do not have nearly as high percentages of population at risk.
+
+```{r}
+# percentage of the population 65yrs and older
+plot_usmap(data = data, values = "65+") + 
+  scale_fill_continuous(name = "Percent 65yrs and older", label = scales::comma) + 
+  theme(legend.position = "right")
+```
+
+```{r}
+# median annual household income (converted to numeric)
+data["Median Annual Household Income as Numeric"] <- as.numeric(gsub('[$,]', '', data$`Median Annual Household Income`))
+plot_usmap(data = data, values = "Median Annual Household Income as Numeric") + 
+  scale_fill_continuous(name = "Median Annual Household Income", label = scales::comma) + 
+  theme(legend.position = "right")
+```
+
+```{r}
+# order length (converted to numeric)
+data['order_length.asNumeric'] <- as.numeric(gsub('days', '', data$order_length))
+plot_usmap(data = data, values = "order_length.asNumeric") + 
+  scale_fill_continuous(name = "SIP Order Length (days)", label = scales::comma) + 
+  theme(legend.position = "right")
+```
+
+```{r}
+# mask mandate (converted to numeric)
+data['mask_mandate.asNumeric'] <- as.numeric(gsub('days', '', data$mask_mandate))
+plot_usmap(data = data, values = "mask_mandate.asNumeric") + 
+  scale_fill_continuous(name = "Mask Mandate Length (days)", label = scales::comma) + 
+  theme(legend.position = "right")
+```
+
+Many states never implemented a state-wide mask mandate and for those that did, the mandate mostly lasted for about a month except for New York and New Jersey being the exceptions with mask madates that lasted for over two months.
+
+```{r}
+# movie theaters closed (converted to numeric)
+data['movie_theaters_closed.asNumeric'] <- as.numeric(gsub('days', '', data$movie_theaters_closed))
+plot_usmap(data = data, values = "movie_theaters_closed.asNumeric") + 
+  scale_fill_continuous(name = "Movie Theaters Closed Length (days)", label = scales::comma) + 
+  theme(legend.position = "right")
+```
+
+```{r}
+# average new cases per 100k
+plot_usmap(data = data, values = "avg_new_cases_per_100K") + 
+  scale_fill_continuous(name = "Average New Cases per 100K", label = scales::comma) + 
+  theme(legend.position = "right")
+```
+
+```{r}
+# average new deaths per 100k
+plot_usmap(data = data, values = "new_deaths_per_100K") + 
+  scale_fill_continuous(name = "Average New Deaths per 100K", label = scales::comma) + 
+  theme(legend.position = "right")
+```
+
+The average number of new cases appears to be strongly correlated to the average number of new deaths.
+
+```{r}
+# max new cases
+plot_usmap(data = data, values = "max_new_cases") + 
+  scale_fill_continuous(name = "Maximum New Cases", label = scales::comma) + 
+  theme(legend.position = "right")
+```
+
+Of the states we have included in our study, New York stands out as the clear outlier in its maximum number of new cases.
+
+```{r}
+# max new deaths
+plot_usmap(data = data, values = "max_new_deaths") + 
+  scale_fill_continuous(name = "Maximum New Deaths", label = scales::comma) + 
+  theme(legend.position = "right")
+```
+As expected from the previously noted correlation, this is also true for the maximum number of new deaths.
+
+## State vs. Mobility Differences
+Positive values indicate that mobility in the given area has increased between the first and last weeks of stay at home orders. 
+Negative values indicate that mobility in the given area has decreased between the first and last weeks of stay at home orders.
+
+The results from this segment of our EDA support our primary theory that longer Stay-at-Home orders are correlated with greater levels of restlessness towards the end. We see that mobility in most areas (except residential) are greater in the last week of the order compared to the first week the order was put in place. Mobility in residential areas correspondingly decreases as people venture outside of their homes. 
+
+Additionally, if we compare the graph showing Changes in Residential Mobility Rates to the graph showing Order Lengths, the two variables appear highly correlated.
+
+```{r}
+# mobility dif: retail and recreation
+plot_usmap(data = data, values = "retail_and_recreation_diff") + 
+  scale_fill_continuous(name = "Change in Retail and Recreation Mobility Rates", label = scales::comma) + 
+  theme(legend.position = "right")
+```
+
+```{r}
+# mobility dif: grocery and pharmacy
+plot_usmap(data = data, values = "grocery_and_pharmacy_diff") + 
+  scale_fill_continuous(name = "Change in Grocery and Pharmacy Mobility Rates", label = scales::comma) + 
+  theme(legend.position = "right")
+```
+
+```{r}
+# mobility dif: parks
+plot_usmap(data = data, values = "parks_diff") + 
+  scale_fill_continuous(name = "Change in Park Mobility Rates", label = scales::comma) + 
+  theme(legend.position = "right")
+```
+
+```{r}
+# mobility dif: transit stations
+plot_usmap(data = data, values = "transit_stations_diff") + 
+  scale_fill_continuous(name = "Change in Transit Station Mobility Rates", label = scales::comma) + 
+  theme(legend.position = "right")
+```
+
+```{r}
+# mobility dif: workplaces
+plot_usmap(data = data, values = "workplaces_diff") + 
+  scale_fill_continuous(name = "Change in Workplace Mobility Rates", label = scales::comma) + 
+  theme(legend.position = "right")
+```
+
+```{r}
+# mobility dif: residential
+plot_usmap(data = data, values = "residential_diff") + 
+  scale_fill_continuous(name = "Change in Residential Mobility Rates", label = scales::comma) + 
+  theme(legend.position = "right")
+```
+
+```{r}
+cor(data$residential_diff,data$order_length, use = "na.or.complete")
+```
+
+## Changes Mobility Data Over Time
+
+The results from this segment of our EDA support our decision to use only one measure of mobility in our model instead of all 6 due to the high levels of correlation among the mobility data.
+
+```{r}
+daily <- read_csv("../data/interim/covid_states_daily.csv")
+
+SIP_daily <- daily %>% filter (order_length > 0)
+head(SIP_daily)
+```
+
+```{r}
+# mobility rates (state_residential vs. retail_and_recreation)
+ggplot(SIP_daily, aes(x=state_residential, y=state_retail_and_recreation, color = US_Region)) + geom_point() + 
+  labs(title = "Mobility Rates: Residential vs. Retail and Recreation", x = "Residential", y = "Retail and Recreation")
+```
+
+```{r}
+# mobility rates (state_residential vs. grocery_and_pharmacy)
+ggplot(SIP_daily, aes(x=state_residential, y=state_grocery_and_pharmacy, color = US_Region)) + geom_point() +
+  labs(title = "Mobility Rates: Residential vs. Grocery and Pharmacy", x = "Residential", y = "Grocery and Pharmacy")
+```
+
+```{r}
+# mobility rates (state_residential vs. state_parks)
+ggplot(SIP_daily, aes(x=state_residential, y=state_parks, color = US_Region)) + geom_point() +
+  labs(title = "Mobility Rates: Residential vs. Parks", x = "Residential", y = "Parks")
+```
+
+```{r}
+# mobility rates (state_residential vs. state_transit_stations)
+ggplot(SIP_daily, aes(x=state_residential, y=state_transit_stations, color = US_Region)) + geom_point() +
+  labs(title = "Mobility Rates: Residential vs. Transit Stations", x = "Residential", y = "Transit Stations")
+```
+
+```{r}
+# mobility rates (state_residential vs. state_workplaces)
+ggplot(SIP_daily, aes(x=state_residential, y=state_workplaces, color = US_Region)) + geom_point() +
+  labs(title = "Mobility Rates: Residential vs. Workplaces", x = "Residential", y = "Workplaces")
+```
+
+```{r}
+# mobility rates (date vs. state_residential)
+ggplot(SIP_daily, aes(x=date, y=state_residential, color = US_Region)) + geom_point() +
+  labs(title = "Mobility Rates: Residential (over time)", x = "Date", y = "Residential")
+```
+
+```{r}
+M <- cor(SIP_daily[,4:9], use = "complete.obs")
+corrplot(M, method = "number")
+```
+
+## Relationships with Change in Residential Mobility
+
+The results from this segment of our EDA support our choices of other variables included in our model to control for factors that may affect mobility apart from order length.
+
+```{r}
+# order length vs. change in residential mobility
+ggplot(data, aes(x=order_length, y=residential_diff)) + stat_smooth() + geom_point() +
+  labs(title = "Order Length vs. Change in Residential Mobility", x = "Order Length (days)", y = "Change in Residential Mobility")
+```
+
+```{r}
+# order length vs. change in residential mobility (color = governor political party)
+ggplot(data, aes(x=order_length, y=residential_diff, color=governor_political_party)) + stat_smooth() + geom_point() +
+  labs(title = "Order Length (days) vs. Change in Residential Mobility", x = "Order Length (days)", y = "Change in Residential Mobility ")
+```
+
+```{r}
+# population density vs. change in residential mobility (with District of Columbia removed)
+ggplot(data[-6,], aes(x=`Population density per square miles`, y=residential_diff)) + stat_smooth() + geom_point() +
+  labs(title = "Population Density per Square Miles vs. Change in Residential Mobility", x = "Population Density per Square Miles", y = "Change in Residential Mobility")
+```
+
+```{r}
+# log population density vs. change in residential mobility (with District of Columbia removed)
+ggplot(data[-6,], aes(x=log(`Population density per square miles`), y=residential_diff)) + stat_smooth() + geom_point() +
+  labs(title = "Log Population Density per Square Miles vs. Change in Residential Mobility", x = "Log Population Density per Square Miles", y = "Change in Residential Mobility")
+```
+```{r}
+# average new cases per 100k vs. change in residential mobility
+ggplot(data, aes(x=avg_new_cases_per_100K, y=residential_diff)) + stat_smooth() + geom_point() +
+  labs(title = "Average New Cases per 100K vs. Change in Residential Mobility", x = "Average New Cases per 100K", y = "Change in Residential Mobility")
+```
+
+```{r}
+# log average new cases per 100k vs. change in residential mobility
+ggplot(data, aes(x=log(avg_new_cases_per_100K), y=residential_diff)) + stat_smooth() + geom_point() +
+  labs(title = "Log Average New Cases per 100K vs. Change in Residential Mobility", x = "Log Average New Cases per 100K", y = "Change in Residential Mobility")
+```
+```{r}
+# average new deaths per 100k vs. change in residential mobility
+ggplot(data, aes(x=new_deaths_per_100K, y=residential_diff)) + stat_smooth() + geom_point() +
+  labs(title = "Average New Deaths per 100K vs. Change in Residential Mobility", x = "Average New Deaths per 100K", y = "Change in Residential Mobility")
+```
+
+```{r}
+# log average new deaths per 100k vs. change in residential mobility
+ggplot(data, aes(x=log(new_deaths_per_100K), y=residential_diff)) + stat_smooth() + geom_point() +
+  labs(title = "Log Average New Deaths per 100K vs. Change in Residential Mobility", x = "Log Average New Deaths per 100K", y = "Change in Residential Mobility")
+```
+
+```{r}
+# percent at risk for serious illness due to COVID vs. change in residential mobility
+ggplot(data, aes(x=`Percent at risk for serious illness due to COVID`, y=residential_diff)) + stat_smooth() + geom_point() +
+  labs(title = "Percent at Risk for Serious Illness Due to COVID vs. Change in Residential Mobility", x = "Percent at Risk for Serious Illness Due to COVID", y = "Change in Residential Mobility")
+```
+
+```{r}
+# median annual household income vs. change in residential mobility
+ggplot(data, aes(x=`Median Annual Household Income as Numeric`, y=residential_diff)) + stat_smooth() + geom_point() +
+  labs(title = "Median Annual Household Income vs. Change in Residential Mobility", x = "Median Annual Household Income", y = "Change in Residential Mobility")
+```
+
+```{r}
+# percent age 65yrs and older vs. change in residential mobility
+ggplot(data, aes(x=`65+`, y=residential_diff)) + stat_smooth() + geom_point() +
+  labs(title = "Percent Age 65yrs and Older vs. Change in Residential Mobility", x = "Percent Age 65yrs and Older", y = "Change in Residential Mobility")
+```
+
+```{r}
+# length of movie theater closure vs. change in residential mobility
+ggplot(data, aes(x=movie_theaters_closed, y=residential_diff)) + stat_smooth() + geom_point() +
+  labs(title = "Length of Movie Theater Closure vs. Change in Residential Mobility", x = "Length of Movie Theater Closure (days)", y = "Change in Residential Mobility")
+```
+
+```{r}
+cor(data$movie_theaters_closed,data$order_length, use = "na.or.complete")
+```
+
+```{r}
+# median annual household income vs. change in residential mobility
+ggplot(data, aes(x=`Median Annual Household Income as Numeric`, y=residential_diff)) + stat_smooth() + geom_point() +
+  labs(title = "Median Annual Household Income vs. Change in Residential Mobility", x = "Median Annual Household Income (dollars)", y = "Change in Residential Mobility")
+```
+
+```{r}
+# order start rank vs. change in residential mobility
+ggplot(data, aes(x=order_start_rank, y=residential_diff)) + stat_smooth() + geom_point() +
+  labs(title = "Order Start Rank vs. Change in Residential Mobility", x = "Order Start Rank", y = "Change in Residential Mobility")
+```
+
+```{r}
+# length of mask mandate vs. change in residential mobility
+ggplot(data, aes(x=mask_mandate.asNumeric, y=residential_diff)) + stat_smooth() + geom_point() +
+  labs(title = "Length of Mask Mandate vs. Change in Residential Mobility", x = "Length of Mask Mandate (days)", y = "Change in Residential Mobility")
+```
+
+```{r}
+# boxplot for governor political party vs. change in residential mobility
+boxplot(residential_diff ~ governor_political_party, data = data, main = "Boxplot for Governor Political Party vs. Change in Residential Mobility", xlab = "Governor Political Party", ylab = "Change in Residential Mobility")
+
+```
+

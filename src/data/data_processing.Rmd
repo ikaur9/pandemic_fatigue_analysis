@@ -1,0 +1,417 @@
+---
+title: "data_processing_2"
+author: "Charis Chan, Joyce Ching, and Inderpal Kaur"
+date: "11/19/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+    
+## Loading and processing raw data
+
+```{r}
+library(readxl)
+library(readr)
+library(data.table)
+library(plyr)
+library(dplyr)
+library(lubridate)
+library(stringi)
+```
+
+### Create new directories to hold the data created or used
+```{r}
+new_folders <- c('raw', 'external', 'interim','processed')
+path <- "../../data"
+for (folder in new_folders) {
+  # check if the folder exists, if not then create folder
+  ifelse(!dir.exists(file.path(path, folder)), dir.create(file.path(path, folder)), FALSE)
+}
+
+```
+
+### Loading policy data at state level
+```{r}
+# download the state policy data and save to folder: /data/raw
+state_policy_url <- "https://mids-w203.s3-us-west-1.amazonaws.com/COVID-19+US+state+policy+database+(CUSP).xlsx"
+state_policy_destfile <- "../../data/raw/COVID_19_US_state_policy_database_CUSP.xlsx"
+curl::curl_download(state_policy_url, state_policy_destfile)
+```
+
+```{r}
+# read Excel sheet for Stay at Home data
+names <- c("stateName", "stateCode", "stateFIPS", "order_start_date", "religious_exempt", "order_without_restriction_date", "order_end_date", "order_start_desc", "religious_exempt_desc", "order_without_restriction_desc", "order_end_desc")
+types <- c("text", "text", "numeric", "date", "numeric", "date", "date", "skip", "text", "text", "text", "text")
+stay_at_home <- read_xlsx(state_policy_destfile, sheet="Stay at Home", range="A2:L52", col_names=names, col_types=types)
+stay_at_home <- stay_at_home[,1:7]
+
+# convert dates into Date datatype
+stay_at_home[] <- lapply(stay_at_home, function(x) if(is.POSIXct(x)) as.Date(x) else x)
+
+# replace invalid dates with NAs
+stay_at_home <- data.frame(sapply(stay_at_home, function(x) {gsub(as.Date("1899-12-31"), NA, x)}))
+
+# fix datatypes
+stay_at_home[,c("stateName", "stateCode")] <- apply(stay_at_home[,c("stateName", "stateCode")], 2, function(x) as.character(x))
+stay_at_home[,c("stateFIPS","religious_exempt")] <- apply(stay_at_home[,c("stateFIPS","religious_exempt")], 2, function(x) as.numeric(as.character(x)))
+stay_at_home[,c("order_start_date", "order_without_restriction_date", "order_end_date")] <- lapply(stay_at_home[,c("order_start_date", "order_without_restriction_date", "order_end_date")], as.Date)
+
+head(stay_at_home)
+
+##################
+
+# read Excel sheet for Physical Distance Closures data
+names <- c("stateName", "stateCode", "stateFIPS", "date_closed_schools", "date_closed_daycares", "date_banned_nursing_home_visitors", "date_closed_other_nonessential_businesses", "date_closed_restaurants", "date_closed_gyms", "date_closed_movie_theaters", "date_closed_bars")
+types <- c("text", "text", "numeric", "date", "date", "date", "date", "date", "date", "date", "date")
+physical_distance_closures <- read_xlsx(state_policy_destfile, sheet="Physical Distance Closures", range="A2:K52", col_names=names, col_types=types)
+
+# convert dates into Date datatype
+physical_distance_closures[] <- lapply(physical_distance_closures, function(x) if(is.POSIXct(x)) as.Date(x) else x)
+
+# replace invalid dates with NAs
+physical_distance_closures <- data.frame(lapply(physical_distance_closures, function(x) {gsub(as.Date("1899-12-31"), NA, x)}))
+
+# fix datatypes
+physical_distance_closures[,c("stateName", "stateCode")] <- apply(physical_distance_closures[,c("stateName", "stateCode")], 2, function(x) as.character(x))
+physical_distance_closures[,c("stateFIPS")] <- as.numeric(as.character(physical_distance_closures[,c("stateFIPS")]))
+physical_distance_closures[,c("date_closed_schools", "date_closed_daycares", "date_banned_nursing_home_visitors", "date_closed_other_nonessential_businesses", "date_closed_restaurants", "date_closed_gyms", "date_closed_movie_theaters", "date_closed_bars")] <- lapply(physical_distance_closures[,c("date_closed_schools", "date_closed_daycares", "date_banned_nursing_home_visitors", "date_closed_other_nonessential_businesses", "date_closed_restaurants", "date_closed_gyms", "date_closed_movie_theaters", "date_closed_bars")], as.Date)
+
+head(physical_distance_closures)
+
+#################################
+
+# read Excel sheet for Reopening data
+names <- (c("stateName", "stateCode", "stateFIPS", "reopen_businesses", "reopen_restaurants", "reopen_restaurants_outdoor_dining", "reopen_gyms", "reopen_movie_theaters", "reopen_hair_salons", "reopen_religious_gatherings", "reopen_other_nonessential", "reopen_bars", "reopen_childcare"))
+types <- (c("text", "text", "numeric", "date", "date", "date", "date", "date", "date", "date", "date", "date", "date"))
+reopening <- read_xlsx(state_policy_destfile, sheet="Reopening", range="A2:M52", col_names=names, col_types=types)
+
+# convert dates into Date datatype
+reopening[] <- lapply(reopening, function(x) if(is.POSIXct(x)) as.Date(x) else x)
+
+# replace invalid dates with NAs
+reopening <- data.frame(lapply(reopening, function(x) {gsub(as.Date("1899-12-31"), NA, x)}))
+
+# fix datatypes
+reopening[,c("stateName", "stateCode")] <- apply(reopening[,c("stateName", "stateCode")], 2, function(x) as.character(x))
+reopening[,c("stateFIPS")] <- as.numeric(as.character(reopening[,c("stateFIPS")]))
+reopening[,c("reopen_businesses", "reopen_restaurants", "reopen_restaurants_outdoor_dining", "reopen_gyms", "reopen_movie_theaters", "reopen_hair_salons", "reopen_religious_gatherings", "reopen_other_nonessential", "reopen_bars", "reopen_childcare")] <- lapply(reopening[,c("reopen_businesses", "reopen_restaurants", "reopen_restaurants_outdoor_dining", "reopen_gyms", "reopen_movie_theaters", "reopen_hair_salons", "reopen_religious_gatherings", "reopen_other_nonessential", "reopen_bars", "reopen_childcare")], as.Date)
+
+head(reopening)
+
+###############
+
+# read Excel sheet for Face Masks data
+names <- (c("stateName", "stateCode", "stateFIPS", "mask_use_by_all", "enforced_by_fines", "enforced_by_criminal_charge", "no_enforcement", "mask_use_by_employees", "end_mask_use_by_all", "state_gov_preventing_local"))
+types <- (c("text", "text", "numeric", "date", "numeric", "numeric", "numeric", "date", "date", "date"))
+face_masks <- read_xlsx(state_policy_destfile, sheet="Face Masks", range="A2:J52", col_names=names, col_types=types)
+
+# convert dates into Date datatype
+face_masks[] <- lapply(face_masks, function(x) if(is.POSIXct(x)) as.Date(x) else x)
+
+# replace invalid dates with NAs
+face_masks <- data.frame(lapply(face_masks, function(x) {gsub(as.Date("1899-12-31"), NA, x)}))
+
+# fix datatypes
+face_masks[,c("stateName", "stateCode")] <- apply(face_masks[,c("stateName", "stateCode")], 2, function(x) as.character(x))
+face_masks[,c("stateFIPS", "enforced_by_fines", "enforced_by_criminal_charge", "no_enforcement")] <- apply(face_masks[,c("stateFIPS", "enforced_by_fines", "enforced_by_criminal_charge", "no_enforcement")], 2, function(x) as.numeric(as.character(x)))
+face_masks[,c("mask_use_by_all", "mask_use_by_employees", "end_mask_use_by_all", "state_gov_preventing_local")] <- lapply(face_masks[,c("mask_use_by_all", "mask_use_by_employees", "end_mask_use_by_all", "state_gov_preventing_local")], as.Date)
+
+head(face_masks)
+```
+
+### Loading data about state demographics and characteristics
+```{r}
+# download Excel file for state-level characteristics to folder: /data/raw
+covid_state_url <- "https://mids-w203.s3-us-west-1.amazonaws.com/covid-19.xlsx"
+covid_state_destfile <- "../../data/raw/covid-19.xlsx"
+curl::curl_download(covid_state_url, covid_state_destfile)
+
+# read Excel file
+covid_19 <- read_xlsx(covid_state_destfile, sheet=2, skip=1)
+
+# select important features
+state_info_columns <- c('State', 'Governor', "Population density per square miles","Population 2018", 
+                        "Nonelderly Adults Who Have A Pre-Existing Condition",
+                        "Percent at risk for serious illness due to COVID",
+                        "All-cause deaths 2018", "Number Homeless (2019)", 
+                        "Medicaid Expenditures as a Percent of Total State Expenditures by Fund", 
+                        "Life Expectancy at Birth (years)", "Percent Unemployed (2018)", 
+                        "Percent living under the federal poverty line (2018)",
+                        "Weekly UI maximum amount with extra stimulus (through July 31, 2020) (dollars)",
+                        "Median Annual Household Income", "Children 0-18", "Adults 19-25","Adults 26-34",
+                        "Adults 35-54", "Adults 55-64", "65+")
+state_info <- covid_19[1:51,state_info_columns]
+colnames(state_info)[1] <- 'stateName'
+
+# extract political party of state governors
+state_info['governor_political_party'] <- stri_extract(stri_extract(state_info$Governor, regex = '\\(.\\)'), regex = '\\w')
+state_info$governor_political_party <- as.factor(state_info$governor_political_party)
+
+head(state_info)
+```
+
+### Joining state policy data for stay at home orders, closures, reopenings, face masks, and state info
+```{r}
+stayathome_physicaldistanceclosures <- join(stay_at_home, physical_distance_closures, by=c("stateName", "stateCode", "stateFIPS"), type="full")
+
+stayathome_physicaldistanceclosures_reopening <- join(stayathome_physicaldistanceclosures, reopening, by=c("stateName", "stateCode", "stateFIPS"), type="full")
+
+state_pol <- join(stayathome_physicaldistanceclosures_reopening, face_masks, by=c("stateName", "stateCode", "stateFIPS"), type="full")
+
+state_policies <- join(state_pol, state_info, by = c('stateName'))
+state_policies
+```
+
+
+### Loading mobility data at state level
+```{r}
+# download, unzip, and save the US mobility data to folder: /data/raw
+mobility_url <- "https://www.gstatic.com/covid19/mobility/Region_Mobility_Report_CSVs.zip"
+mobility_destfile <- "../../data/raw/Region_Mobility_Report_CSVs.zip"
+us_mobility_destfile <- "2020_US_Region_Mobility_Report.csv"
+curl::curl_download(mobility_url, mobility_destfile)
+master <- as.character(unzip(mobility_destfile, list = TRUE)$Name)
+
+# read the CSV file for US mobility data
+mobility <- read.csv(unz(mobility_destfile, us_mobility_destfile), header = TRUE, sep = ",")
+
+# convert dates into Date datatype
+mobility$date <- as.Date(mobility$date)
+
+# rename columns
+colnames(mobility)[1:14] <- c("countryCode", "countryName", "stateName", "countyName", "metro_area", "iso", "countyFIPS", "date", "retail_and_recreation", "grocery_and_pharmacy", "parks", "transit_stations", "workplaces", "residential")
+mobility <- mobility[, -c(2, 5)]
+head(mobility, n=10)
+```
+
+```{r}
+# select state-level mobility data
+state_mobility_columns <- c("stateName", "date", "retail_and_recreation", "grocery_and_pharmacy", "parks",
+                            "transit_stations","workplaces", "residential")
+state_mobility <- mobility[mobility$iso != "", state_mobility_columns]
+
+# rename columns
+colnames(state_mobility)[3:8] <- c("state_retail_and_recreation", "state_grocery_and_pharmacy", "state_parks", "state_transit_stations", "state_workplaces", "state_residential")
+```
+
+### Loading state-level data on Covid-19 cases and deaths
+```{r}
+# download CSV for Covid-19 data to folder: /data/external
+covid_states_url <- "https://drive.google.com/uc?export=download&id=1lm-JXbJh-f1JgmkeBjNTMv1I6jE-oLqW" 
+covid_states_destfile <- "../../data/external/United_States_COVID-19_Cases_and_Deaths_by_State_over_Time.csv"
+curl::curl_download(covid_states_url, covid_states_destfile)
+
+# read CSV
+covid_states <- read_csv("./United_States_COVID-19_Cases_and_Deaths_by_State_over_Time.csv", col_types = cols(
+  submission_date = 'c',
+  state = 'c',
+  tot_cases = 'i',
+  conf_cases = 'i',
+  prob_cases = 'i',
+  new_case = 'i',
+  pnew_case = 'i',
+  tot_death = 'i',
+  conf_death = 'i',
+  prob_death = 'i',
+  new_death = 'i',
+  pnew_death = 'i',
+  created_at = 'c',
+  consent_cases = 'c',
+  consent_deaths = 'c'
+))
+
+# convert dates to Date datatype
+covid_states$submission_date <- as.Date(covid_states$submission_date, tryFormats = c("%m/%d/%y"))
+head(covid_states)
+```
+
+
+
+### Joining information about Covid-19, mobility, and policies per day for each state
+```{r}
+# taking out some columns that will not be used for combining dataframes or in answering our research question
+order_stay <- state_policies[,-which(names(state_policies) %in% c('stateFIPS','order_without_restriction_date', 'Governor'))]
+colnames(order_stay)[1] <-  'stateName'
+
+colnames(covid_states)[c(1,2)] <- c('date', 'stateCode')
+# joining the covid cases/deaths info with order dates
+covid_state_name <- join(covid_states, order_stay[c(1,2)], type = 'full', by = 'stateCode')
+
+# joining state mobility with covid cases/death info and order dates
+covid_mobility_cases <- join(state_mobility, covid_state_name, type = 'left', by = c('date', 'stateName'))
+covid_country <- join(covid_mobility_cases, order_stay[-c(2)], type = 'left', by = 'stateName')
+#take out all the states that never had a stay at home order
+covid_country <- covid_country[!is.na(covid_country$order_start_date),]
+
+```
+
+### adding regions for states
+```{r} 
+# putting states in regions - from Census Bureau
+# West =  Arizona, Colorado, Idaho, Montana, Nevada, New Mexico, Utah, Wyoming, Alaska, California, Hawaii, Oregon, and Washington
+# Midwest = Illinois, Indiana, Michigan, Ohio, Wisconsin,Iowa, Kansas, Minnesota, Missouri, Nebraska, North Dakota, and South Dakota
+# South = Delaware, Florida, Georgia, Maryland, North Carolina, South Carolina, Virginia, District of Columbia, West Virginia, Alabama, Kentucky, Mississippi, Tennessee, Arkansas, Louisiana, Oklahoma, and Texas
+# Northeast = Connecticut, Maine, Massachusetts, New Hampshire, Rhode Island, Vermont, New Jersey, New York, and Pennsylvania
+
+
+# initializing us_region
+covid_country['US_Region'] <- ''
+# west region
+covid_country[covid_country$stateName %in% c('Arizona', 'Colorado', 'Idaho', 'Montana', 'Nevada', 'New Mexico', 'Utah', 'Wyoming', 'Alaska', 'California', 'Hawaii', 'Oregon', 'Washington'),'US_Region'] <- 'West'
+# midwest
+covid_country[covid_country$stateName %in% c('Illinois', 'Indiana', 'Michigan', 'Ohio', 'Wisconsin','Iowa', 'Kansas', 'Minnesota', 'Missouri', 'Nebraska', 'North Dakota', 'South Dakota'),'US_Region'] <- 'Midwest'
+# south
+covid_country[covid_country$stateName %in% c('Delaware', 'Florida', 'Georgia', 'Maryland', 'North Carolina', 'South Carolina', 'Virginia', 'District of Columbia', 'West Virginia', 'Alabama', 'Kentucky', 'Mississippi', 'Tennessee', 'Arkansas', 'Louisiana', 'Oklahoma', 'Texas'),'US_Region'] <- 'South'
+# northeast
+covid_country[covid_country$stateName %in% c('Connecticut', 'Maine', 'Massachusetts', 'New Hampshire', 'Rhode Island', 'Vermont', 'New Jersey', 'New York', 'Pennsylvania'),'US_Region'] <- 'Northeast'
+
+
+# take out CA and NM because they have not ended the stay at home order
+covid_country <- covid_country[!covid_country$stateName %in% c('California','New Mexico'),]
+```
+
+
+### Create function to calculate days since order
+```{r}
+days_since <- function(dates, order_start_date, order_end_date) {
+  
+  days_since_start <- dates - (order_start_date - 1)
+  # order hasn't started yet - taking out the negatives
+  days_since_start[days_since_start <0] <- 0
+  
+  days_since_end <- dates - order_end_date
+  
+  # order still hasn't ended - taking out the negatives
+  days_since_end[days_since_end < 0] <- 0
+  
+  # order not in effect - marking the end of order
+  days_since_start[days_since_end > 0] <- NA
+  return(days_since_start)
+}
+```
+
+### Use function above (days_since) to get the dates since orders started
+```{r}
+# Stay at home order
+covid_country['order_length'] <- days_since(covid_country$date, covid_country$order_start_date, covid_country$order_end_date)
+
+
+# daycare
+covid_country['daycare_closed'] <- days_since(covid_country$date, covid_country$date_closed_daycares, covid_country$reopen_childcare)
+
+
+# gyms
+covid_country['gyms_closed'] <- days_since(covid_country$date, covid_country$date_closed_gyms, covid_country$reopen_gyms)
+
+
+# restaurants
+covid_country['restaurants_closed'] <- days_since(covid_country$date, covid_country$date_closed_restaurants, covid_country$reopen_restaurants)
+
+
+# movie theaters
+covid_country['movie_theaters_closed'] <- days_since(covid_country$date, covid_country$date_closed_movie_theaters, covid_country$reopen_movie_theaters)
+
+
+# bars
+covid_country['bars_closed'] <- days_since(covid_country$date, covid_country$date_closed_bars, covid_country$reopen_bars)
+
+
+
+# other non essentials
+covid_country['other_non_essentials_closed'] <- days_since(covid_country$date, covid_country$date_closed_other_nonessential_businesses, covid_country$reopen_other_nonessential)
+
+
+# mask use by all
+covid_country['mask_mandate'] <- days_since(covid_country$date, covid_country$mask_use_by_all, covid_country$end_mask_use_by_all)
+
+# add covid country to the interim folder
+write.csv(covid_country, "../../data/interim/covid_states_daily.csv")
+
+```
+
+
+### Comparing the mobility from the start and end of SIP
+```{r} 
+# columns we want for state information
+columns_names <- c("stateName", 'US_Region', "Population density per square miles","Population 2018",
+                   "Nonelderly Adults Who Have A Pre-Existing Condition",
+                   "Percent at risk for serious illness due to COVID", "All-cause deaths 2018", 
+                   "Number Homeless (2019)", 
+                   "Medicaid Expenditures as a Percent of Total State Expenditures by Fund", 
+                   "Life Expectancy at Birth (years)", "Percent Unemployed (2018)", 
+                   "Percent living under the federal poverty line (2018)",
+                   "Weekly UI maximum amount with extra stimulus (through July 31, 2020) (dollars)",
+                   "Median Annual Household Income", "Children 0-18", "Adults 19-25","Adults 26-34",
+                   "Adults 35-54", "Adults 55-64", "65+", "governor_political_party", "order_length",
+                   "daycare_closed","gyms_closed", "restaurants_closed", "movie_theaters_closed", 
+                   "bars_closed", "other_non_essentials_closed","mask_mandate",'order_start_date')
+
+mobility_change <- covid_country[(covid_country$date == covid_country$order_end_date) , columns_names]
+
+
+# getting only the columns about mobility to subtract start with the end mobility
+mobility_columns <- c("state_retail_and_recreation","state_grocery_and_pharmacy",
+                      "state_parks","state_transit_stations","state_workplaces","state_residential")
+
+columns_state_mobility <- c('stateName', mobility_columns)
+
+# get the mobility rates for the week of when the order started and ended
+start_state_mobility <- covid_country[(covid_country$date >=covid_country$order_start_date) & (covid_country$date < covid_country$order_start_date+7),columns_state_mobility] 
+
+end_state_mobility <- covid_country[(covid_country$date >covid_country$order_end_date-7) & (covid_country$date <= covid_country$order_end_date),columns_state_mobility] 
+
+# average the week's mobility rate
+avg_start_mobility <- start_state_mobility %>%
+  group_by(stateName) %>%
+  summarise_all(mean)
+
+avg_end_mobility <- end_state_mobility %>%
+  group_by(stateName) %>%
+  summarise_all(mean)
+new_names_for_mobility <- c("retail_and_recreation_diff","grocery_and_pharmacy_diff",
+                      "parks_diff","transit_stations_diff","workplaces_diff","residential_diff")
+
+# subtract the end mobility rate from the start mobility
+mobility_change[, new_names_for_mobility]<- avg_start_mobility[,mobility_columns] -avg_end_mobility[,mobility_columns]
+
+
+# find the order in which states first 
+mobility_change['order_start_rank'] <- min_rank(mobility_change$order_start_date)
+
+# drop order_start_date since we have the order_start_rank
+mobility_change <- mobility_change[, !(colnames(mobility_change) %in% c('order_start_date'))]
+```
+
+```{r}
+mobility_change
+```
+
+
+### getting average new cases/deaths per day for that time period, need population
+```{r}
+covid_avg <-  covid_country %>%
+  filter(order_length > 0) %>% 
+  group_by(stateName) %>%
+  dplyr::summarise(avg_new_cases = mean(new_case, na.rm = TRUE), 
+            avg_new_deaths = mean(new_death, na.rm = TRUE), 
+            avg_new_cases_per_100K = mean(new_case/(`Population 2018`/100000),na.rm = TRUE), 
+            new_deaths_per_100K = mean(new_death/(`Population 2018`/100000),na.rm = TRUE), 
+            max_new_cases = max(new_case, na.rm = TRUE), 
+            max_new_deaths = max(new_death, na.rm = TRUE))
+
+
+
+
+covid_avg_states <- join(mobility_change, covid_avg, by = 'stateName')
+
+
+covid_avg_states
+```
+
+```{r}
+# save the covid state data into the processed folder
+write.csv(covid_avg_states, "../../data/processed/covid_states.csv")
+```
+
